@@ -18,6 +18,13 @@ android {
         versionName = "2.0"
     }
 
+    buildTypes {
+        release {
+            // 分发版用 debug 密钥签名(个人分发,免自建 keystore);不开 minify,与验收构建保持一致
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
