@@ -578,7 +578,8 @@ private fun ExercisePickerSheet(
                 modifier = Modifier.padding(bottom = 8.dp),
             )
             val grouped = app.exercises.groupBy { it.categoryZh }
-            LazyColumn(modifier = Modifier.heightIn(max = 480.dp).padding(bottom = 24.dp)) {
+            // 固定高度:弹层从第一帧起就是最终尺寸,避免拖动时"半开→全高"吸附跳变(抖动根源)
+            LazyColumn(modifier = Modifier.height(440.dp).padding(bottom = 24.dp)) {
                 grouped.forEach { (category, list) ->
                     item(key = "cat_$category") {
                         Text(
