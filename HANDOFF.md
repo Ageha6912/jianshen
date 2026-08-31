@@ -13,7 +13,8 @@
 - **v1(已交付验收)**:底部 2 tab(训练日志/动作库);动作库 43 个动作(来自 GitHub 开源数据集 exercises-dataset,含中文名/中文分步说明/缩略图/GIF);训练日志 = 弹窗表单打卡(日期+动作+组数×次数+重量kg可选),Room 持久化;Material 3 默认风格。
 - **v2(已交付验收)**:应用户要求追加。① **Notion 简约风设计语言**(纸感白底 `#FFFFFF`/暗色 `#191919`、暖黑文字 `#37352F`、零阴影卡片用 1px 描边、圆角 4-6dp、黑底白字 CTA、emoji 图标、底部导航无色块);② **Session 逐组记录模型**(开始训练→添加动作→逐组勾选记录,session 持久化可恢复);③ **组间休息计时器**(勾组触发,页内黑色横幅 + 系统通知,默认 90s 长按横幅改 60/90/120);④ **PR + Epley 估算 1RM**(历史 tab 内「日志/个人纪录」双页签);⑤ **导出**(设置页:CSV 带 BOM + JSON 全量备份,SAF 零权限);⑥ 深色主题跟随系统;⑦ DB v1→v2 **摧毁式重建**(旧数据清空属预期)。
 - **v3(2026-08-30 已交付验收):白金风设计重皮,向 LibreFit 看齐**。用户主动重开已冻结的 Notion 风决策,经 grill-me 会话三轮拷问定案:**香槟铂金单强调色**(深色主色 `#E8E1D5`/暖黑底 `#141210`;浅色反转为炭黑主色 `#2A2724`/暖白底 `#FAF9F7`,白金容器 `#EFE9DE`;完成/选中全用白金,红色仅错误/删除,绿色彻底退出)+ **M3 大圆角**(卡片 20/弹层对话框 28/控件 12-16dp,弃描边靠表面色阶)+ **Roboto Flex 宽体数字**(wdth=125,数字拉丁生效、中文回退系统;字体子集 103KB 在 `res/font/roboto_flex.ttf`)+ **底部导航 pill 高亮**(res/drawable 自持矢量图标)+ **逐组表格卡**(列头 `#/重量(kg)/次数`,行尾圆形✓=完成态(点按删除),草稿录入行自动带入上组数值,动作缩略图)+ **动作选择器改 ModalBottomSheet**(保持打开便于连加,已选项标「已添加」)+ **休息横幅重皮**(表面高阶层 + 进度条,新增 `RestTimer.total` 流;通知 `setColor` 白金染色)+ **主题三档**沿用 + **应用图标对勾改白金**(gen_icon.py 已更新)。
-- **明确不做**(第三批候选):进度图表、GitHub 式热力图、动作库扩容(数据集还剩 ~1280 个动作可用)、训练计划体系、逐组「上次数据」增强(LibreFit 式 per-set 提示;现有「上次」汇总行保留)。
+- **v4(2026-08-31 已交付验收):功能补强**,grilling 定案(数据洞察 A + 数据安全 D + 轻量计划 B + 有氧/计时动作 C1)。① 底部导航 **5 tab**(训练/历史/统计/计划/动作库);② **统计 tab**:本周训练次数 / 连续不空训练周(周维度)/ 总容量 + **6 个月训练热力图**(自动滚到当前周,点天看当天摘要)+ 动作走势入口;③ **每动作历史页**:自绘 Canvas 折线图(最高重量 / 估算 1RM 切换)+ 全部记录,入口 = 统计页 / PR 条目 / 动作库详情;④ **计划模板(轻量)**:模板 = 名称 + 动作(目标组数 + 次数区间 + 可选目标重量),从模板开始预填动作、训练页显示「目标 N 组 × X-Y 次 · 已完成 M/N」,**预置推/拉/腿 3 个**(首启种子,可删);⑤ **数据安全**:JSON 覆盖式导入(红色确认,导入前自动再备份)+ 应用内自动备份(每 7 天,私有目录轮换 4 份),设置页「备份」区;⑥ **有氧/计时动作**:assets type="timed",预置 8 个(跑步/快走/动感单车/跳绳计时/划船机/椭圆机/拉伸-腿/拉伸-肩背,图标占位),记录 = 时长(分)+ 可选距离(km),不进 1RM;⑦ 休息倒计时自然结束**响铃 + 震动**(VIBRATE 权限);⑧ **DB v3→v4 真 Migration**(首次,ALTER+CREATE,移除 fallbackToDestructiveMigration),模拟器实测旧数据逐行完好。
+- **明确不做**(第三批候选):动作库扩容(数据集还剩 ~1280 个动作可用)、逐组「上次数据」增强、RPE/组备注、体重记录、周期日程排期、多语言、云同步、社交、Wear OS、小组件。
 
 ---
 
@@ -36,6 +37,7 @@
 - **v1 已在模拟器全流程验收通过**(空态/打卡/列表/动作库/GIF 详情/零崩溃),截图:`E:\jianshen\_dataset\shot_01~07_*.png`。
 - **v2 已构建并全流程验收通过(2026-08-30)**:`E:\jianshen\FitnessApp\app\build\outputs\apk\debug\app-debug.apk`。修复过徒手组 bug(DB v3)。
 - **v3 白金风已构建并全流程验收通过(2026-08-30,见下方 v3 小节)**:versionName 2.0 / versionCode 2,debug 包 **14.6MB**(v1.3 时 21MB 的 icon 包胀回已解决),已装模拟器。截图 `E:\jianshen\_dataset\v3_01~14_*.png`。
+- **v4 功能补强已构建并全流程验收通过(2026-08-31)**:versionName 4.0 / versionCode 3,release 包 ~12MB。截图 `E:\jianshen\_dataset4_01~05_*.png`。git 仓库 github.com/Ageha6912/jianshen(公开),Release v2.0 / v4.0 已发布。
 
 ### 代码结构(`E:\jianshen\FitnessApp`)
 
@@ -147,6 +149,10 @@ v3 验收结果:浅色全屏(空态/选择器 sheet/表格记组/横幅+进度�
 26. **debug 包增量打包会留陈旧条目**:删大依赖后 `ls` 看体积可能不减(磁盘 21.4MB 但 zip 实际内容 14.5MB,本地条目区有孤儿数据)。`gradlew clean assembleDebug` 后才是真实体积。
 27. **material-icons-extended 已移除,别再加回**:全量图标 debug 包 +7MB。要新图标走 v3 小节的「图标自持模式」(drawable 自持,~10KB/个)。
 28. **Roboto Flex 子集套路**:google/fonts 的 VF 全量 1.8MB;先用 `fontTools.varLib.instancer` 把不用的轴钉死默认值(只留 wght+wdth),再 `fontTools.subset` 裁字符集(Basic Latin + Latin-1 + 常用标点),1.8MB→103KB。fonttools 本机已有(4.51.0)。Compose 侧注意 `FontVariation.weight()` 参数是 **Int**;`Font(resId, variationSettings=...)` 是 ExperimentalTextApi,要 @OptIn。
+29. **Room Migration:INTEGER PRIMARY KEY AUTOINCREMENT 必须显式写 NOT NULL**——SQLite 整型主键默认 nullable,Room 按非空 Kotlin 字段校验 schema,缺 NOT NULL 直接 "Migration didn't properly handle" 崩溃(踩过)。写完迁移先在带数据的机器上验:user_version、旧行数、新表存在性。
+30. **K2 推断级联毒化**:`var x by remember { mutableStateOf(复杂内联表达式) }` 可能让整个函数的类型解析坏掉,症状是毫不相关的报错(setValue 缺失、forEachIndexed 解析不了、连 Int.compareTo 都报 "operator modifier required")。解法:把复杂初始化拆成 `val initial: List<T> = ...` 再 `var x by remember { mutableStateOf(initial) }`。
+31. **DrawScope 里用 nativeCanvas 要写全接收者**:`drawContext.canvas.nativeCanvas.drawText(...)`,光写 `nativeCanvas` 报 receiver mismatch。
+32. **IME 开着时 swipe/滚动手势全部被吃**(表现为"页面不滚动"的假象;`keyevent 111` 关不掉 IME,必须用 4):做滚动/拖拽验收前先 `input keyevent 4`,必要时 `dumpsys input_method | grep mInputShown` 确认。
 
 ---
 
@@ -157,4 +163,5 @@ v3 验收结果:浅色全屏(空态/选择器 sheet/表格记组/横幅+进度�
 - grilling 全按推荐落地:Session 模型、计时器(横幅+通知+90s 默认)、PR 用 Epley、CSV+JSON 导出、深色跟随系统、DB 摧毁式迁移。
 - **设计语言:2026-08-30 起为「白金风」(v3),Notion 风(含 1px 描边/小圆角/黑 CTA)已废弃**。这是用户主动重开的已冻结决策,经 grill-me 三轮确认,全部按推荐落地,唯一用户自选点是品牌色=**白金色**(否掉了绿色提案)。合规边界:LibreFit 只参考 token 数值与布局思路、不复制其 GPL 源码。
 - v1 的旧"弹窗表单打卡"已整体被 v2 Session 模型**取代并删除**(TrainingLog.kt/LogScreen.kt 已删),历史页由 sessions+set_entries 聚合。
+- v4 功能集经 grilling 定案(用户自述痛点「没有图表反馈/没有计划模板/只有力量动作没有跑步拉伸」直接决定范围):数据洞察 + 数据安全 + 轻量计划 + 计时动作进本批;RPE/体重/周期日程/扩容等继续冻结。
 - v3 范围纪律:纯 UI 重皮,数据层/导出/计时逻辑不动;图表、Lottie、训练计划、「上次数据」增强继续不做(后续候选,用户未拍板)。
