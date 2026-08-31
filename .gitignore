@@ -22,3 +22,6 @@ _dataset/*.xml
 # 大体积源数据:App 自有副本在 FitnessApp/app/src/main/assets/,全量可从上游数据集再生
 _dataset/exercises.json
 _dataset/media/
+
+# --- README 预览工作文件(本地渲染,不入库) ---
+_preview/
