@@ -1,6 +1,7 @@
 package com.jianshen.fitness.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +39,7 @@ import java.util.Locale
 private val DateTimeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
 
 @Composable
-fun HistoryScreen() {
+fun HistoryScreen(onOpenExerciseHistory: (String, String) -> Unit = { _, _ -> }) {
     var subTab by rememberSaveable { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -54,7 +55,7 @@ fun HistoryScreen() {
         Spacer(modifier = Modifier.padding(top = 12.dp))
         when (subTab) {
             0 -> LogList()
-            1 -> PrList()
+            1 -> PrList(onOpenExerciseHistory)
         }
     }
 }
@@ -133,7 +134,7 @@ private fun SessionBlock(session: TrainingSession, sets: List<SetEntry>) {
 }
 
 @Composable
-private fun PrList() {
+private fun PrList(onOpenExerciseHistory: (String, String) -> Unit) {
     val app = LocalContext.current.applicationContext as FitnessApplication
     val prs by app.database.setEntryDao().observePrs().collectAsState(initial = emptyList())
 
@@ -150,7 +151,9 @@ private fun PrList() {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                 shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenExerciseHistory(pr.exerciseId, pr.exerciseNameZh) },
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(

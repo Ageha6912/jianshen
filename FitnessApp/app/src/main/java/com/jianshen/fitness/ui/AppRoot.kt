@@ -20,14 +20,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.jianshen.fitness.R
 
+private data class TabSpec(val label: String, val iconRes: Int)
+
 @Composable
 fun AppRoot() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
+    // 每动作历史页覆盖层:(exerciseId, 名称)
+    var historyTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
 
-    if (showSettings) {
-        SettingsScreen(onBack = { showSettings = false })
-        return
+    val tabs = listOf(
+        TabSpec("训练", R.drawable.ic_fitness_center),
+        TabSpec("历史", R.drawable.ic_calendar_month),
+        TabSpec("统计", R.drawable.ic_trending_up),
+        TabSpec("计划", R.drawable.ic_assignment),
+        TabSpec("动作库", R.drawable.ic_menu_book),
+    )
+
+    when {
+        showSettings -> {
+            SettingsScreen(onBack = { showSettings = false })
+            return
+        }
+        historyTarget != null -> {
+            val target = historyTarget!!
+            ExerciseHistoryScreen(
+                exerciseId = target.first,
+                onBack = { historyTarget = null },
+            )
+            return
+        }
     }
 
     Scaffold(
@@ -41,35 +63,25 @@ fun AppRoot() {
                     selectedTextColor = MaterialTheme.colorScheme.onBackground,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                NavigationBarItem(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    icon = { Icon(painterResource(R.drawable.ic_fitness_center), contentDescription = null) },
-                    label = { Text("训练") },
-                    colors = itemColors,
-                )
-                NavigationBarItem(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    icon = { Icon(painterResource(R.drawable.ic_calendar_month), contentDescription = null) },
-                    label = { Text("历史") },
-                    colors = itemColors,
-                )
-                NavigationBarItem(
-                    selected = tab == 2,
-                    onClick = { tab = 2 },
-                    icon = { Icon(painterResource(R.drawable.ic_menu_book), contentDescription = null) },
-                    label = { Text("动作库") },
-                    colors = itemColors,
-                )
+                tabs.forEachIndexed { index, spec ->
+                    NavigationBarItem(
+                        selected = tab == index,
+                        onClick = { tab = index },
+                        icon = { Icon(painterResource(spec.iconRes), contentDescription = spec.label) },
+                        label = { Text(spec.label) },
+                        colors = itemColors,
+                    )
+                }
             }
         },
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
             when (tab) {
                 0 -> TrainScreen(onOpenSettings = { showSettings = true })
-                1 -> HistoryScreen()
-                2 -> LibraryScreen()
+                1 -> HistoryScreen(onOpenExerciseHistory = { id, name -> historyTarget = id to name })
+                2 -> StatsScreen(onOpenExercise = { id, name -> historyTarget = id to name })
+                3 -> TemplatesScreen(onSessionStarted = { tab = 0 })
+                4 -> LibraryScreen()
             }
         }
     }

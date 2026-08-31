@@ -15,8 +15,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -26,11 +30,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.jianshen.fitness.R
+import com.jianshen.fitness.FitnessApplication
 import com.jianshen.fitness.data.Exercise
 
 @Composable
-fun ExerciseDetail(exercise: Exercise, onBack: () -> Unit) {
+fun ExerciseDetail(exercise: Exercise, onBack: () -> Unit, onViewHistory: (() -> Unit)? = null) {
     BackHandler(onBack = onBack)
+    val app = LocalContext.current.applicationContext as FitnessApplication
+    val recordCount by produceState(initialValue = -1, exercise.id) {
+        value = app.database.setEntryDao().getAllFinishedForExercise(exercise.id).size
+    }
 
     Column(
         modifier = Modifier
@@ -95,6 +104,15 @@ fun ExerciseDetail(exercise: Exercise, onBack: () -> Unit) {
             )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 12.dp))
+        if (recordCount > 0) {
+            OutlinedButton(
+                onClick = { onViewHistory?.invoke() },
+                shape = PillShape,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            ) {
+                Text("查看历史记录($recordCount 组)")
+            }
+        }
         Text(
             text = exercise.attribution,
             style = MaterialTheme.typography.bodySmall,

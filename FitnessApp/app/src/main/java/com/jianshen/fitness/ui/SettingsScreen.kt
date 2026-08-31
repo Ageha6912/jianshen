@@ -10,15 +10,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,17 +33,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jianshen.fitness.FitnessApplication
 import com.jianshen.fitness.R
+import com.jianshen.fitness.data.BackupManager
 import com.jianshen.fitness.data.ThemePrefs
+import java.io.File
 import com.jianshen.fitness.data.fmtKg
 import java.net.URLDecoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 private val DateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
 private val StampFmt = SimpleDateFormat("yyyyMMdd", Locale.CHINA)
@@ -49,6 +57,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+
+    var showRestoreList by remember { mutableStateOf(false) }
+    var pendingRestore by remember { mutableStateOf<File?>(null) }
 
     val csvLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
@@ -71,7 +82,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
-                val text = buildJsonBackup(db)
+                val text = com.jianshen.fitness.data.buildJsonBackup(db)
                 context.contentResolver.openOutputStream(uri)?.use { stream ->
                     stream.write(text.toByteArray(Charsets.UTF_8))
                 } ?: error("无法写入文件")
@@ -129,9 +140,38 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+        SectionTitle("备份")
+        val lastBackup = BackupManager.lastBackupAt(context)
+        Text(
+            text = if (lastBackup == 0L) "还没有应用内备份(每 7 天自动备份一次)"
+            else "上次备份:" + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(lastBackup)) + " · 每 7 天自动备份",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SettingsItem(
+            title = "立即备份",
+            subtitle = "备份到应用私有目录(保留最近 4 份)",
+            iconRes = R.drawable.ic_backup,
+        ) {
+            scope.launch {
+                runCatching { BackupManager.backupNow(context) }
+                    .onSuccess { toast("备份完成") }
+                    .onFailure { toast("备份失败:${it.message}") }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SettingsItem(
+            title = "从备份恢复",
+            subtitle = "选择应用内备份,覆盖当前全部数据",
+            iconRes = R.drawable.ic_description,
+        ) {
+            showRestoreList = true
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
         SectionTitle("关于")
         Text(
-            text = "健身打卡 v2.0 · 本地存储,不联网",
+            text = "健身打卡 v4.0 · 本地存储,不联网",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 8.dp),
@@ -147,6 +187,67 @@ fun SettingsScreen(onBack: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 4.dp),
+        )
+    }
+
+    if (showRestoreList) {
+        val backups = BackupManager.listBackups(context)
+        AlertDialog(
+            onDismissRequest = { showRestoreList = false },
+            title = { Text("从备份恢复") },
+            text = {
+                if (backups.isEmpty()) {
+                    Text("应用内还没有备份文件。先用「立即备份」创建一份")
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        backups.forEach { file ->
+                            TextButton(
+                                onClick = {
+                                    pendingRestore = file
+                                    showRestoreList = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(file.name, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showRestoreList = false }) { Text("取消") } },
+        )
+    }
+    pendingRestore?.let { file ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("覆盖当前数据?") },
+            text = {
+                Text(
+                    "将清空现有全部训练记录,并替换为「${file.name}」的内容。替换前会自动对当前数据再做一次备份,作为后悔药。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        runCatching {
+                            BackupManager.backupNow(context)
+                            BackupManager.restore(context, file)
+                        }
+                            .onSuccess { toast("恢复完成") }
+                            .onFailure { toast("恢复失败:${it.message}") }
+                        pendingRestore = null
+                    }
+                }) {
+                    Text("覆盖", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text("取消") } },
         )
     }
 }
@@ -245,50 +346,4 @@ private fun buildCsv(rows: List<com.jianshen.fitness.data.ExportRow>): String {
     return sb.toString()
 }
 
-private suspend fun buildJsonBackup(db: com.jianshen.fitness.data.FitnessDatabase): String {
-    val sessions = db.sessionDao().getAll()
-    val exercises = db.sessionExerciseDao().getAll()
-    val sets = db.setEntryDao().getAll()
-    val root = JSONObject()
-    root.put("app", "健身打卡")
-    root.put("exportedAt", System.currentTimeMillis())
-    val sessionArray = JSONArray()
-    sessions.forEach { session ->
-        val obj = JSONObject()
-        obj.put("id", session.id)
-        obj.put("startedAt", session.startedAt)
-        obj.put("finishedAt", session.finishedAt ?: JSONObject.NULL)
-        obj.put(
-            "exercises",
-            JSONArray().apply {
-                exercises.filter { it.sessionId == session.id }.forEach {
-                    put(
-                        JSONObject()
-                            .put("exerciseId", it.exerciseId)
-                            .put("name", it.exerciseNameZh)
-                    )
-                }
-            },
-        )
-        obj.put(
-            "sets",
-            JSONArray().apply {
-                sets.filter { it.sessionId == session.id }.forEach {
-                    put(
-                        JSONObject()
-                            .put("exerciseId", it.exerciseId)
-                            .put("name", it.exerciseNameZh)
-                            .put("weightKg", it.weightKg?.toDouble() ?: JSONObject.NULL)
-                            .put("reps", it.reps)
-                            .put("durationMin", it.durationMin ?: JSONObject.NULL)
-                            .put("distanceKm", it.distanceKm?.toDouble() ?: JSONObject.NULL)
-                            .put("completedAt", it.completedAt)
-                    )
-                }
-            },
-        )
-        sessionArray.put(obj)
-    }
-    root.put("sessions", sessionArray)
-    return root.toString(2)
-}
+

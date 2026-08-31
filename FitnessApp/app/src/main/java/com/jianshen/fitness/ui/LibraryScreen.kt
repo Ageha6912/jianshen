@@ -35,14 +35,18 @@ import com.jianshen.fitness.FitnessApplication
 import com.jianshen.fitness.data.Exercise
 
 @Composable
-fun LibraryScreen() {
+fun LibraryScreen(onOpenExerciseHistory: (String, String) -> Unit = { _, _ -> }) {
     val app = LocalContext.current.applicationContext as FitnessApplication
     val exercises = app.exercises
     var category by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Exercise?>(null) }
 
     selected?.let { exercise ->
-        ExerciseDetail(exercise = exercise, onBack = { selected = null })
+        ExerciseDetail(
+            exercise = exercise,
+            onBack = { selected = null },
+            onViewHistory = { onOpenExerciseHistory(exercise.id, exercise.nameZh) },
+        )
         return
     }
 
