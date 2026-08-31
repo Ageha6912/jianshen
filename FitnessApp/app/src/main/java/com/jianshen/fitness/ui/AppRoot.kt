@@ -1,6 +1,8 @@
 package com.jianshen.fitness.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,15 +41,20 @@ fun AppRoot() {
 
     when {
         showSettings -> {
-            SettingsScreen(onBack = { showSettings = false })
+            // 覆盖页不走 Scaffold,手动避让系统栏(状态栏/手势条),否则标题与状态栏重叠
+            Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                SettingsScreen(onBack = { showSettings = false })
+            }
             return
         }
         historyTarget != null -> {
             val target = historyTarget!!
-            ExerciseHistoryScreen(
-                exerciseId = target.first,
-                onBack = { historyTarget = null },
-            )
+            Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                ExerciseHistoryScreen(
+                    exerciseId = target.first,
+                    onBack = { historyTarget = null },
+                )
+            }
             return
         }
     }
