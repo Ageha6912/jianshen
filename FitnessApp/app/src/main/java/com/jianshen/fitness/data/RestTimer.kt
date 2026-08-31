@@ -5,7 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +29,7 @@ object RestTimer {
 
     private val _remaining = MutableStateFlow<Int?>(null)
     private val _total = MutableStateFlow<Int?>(null)
+    private val _finishedNaturally = MutableStateFlow(false)
 
     /** 非 null 表示计时中(剩余秒数),null 表示空闲。 */
     val remaining: StateFlow<Int?> = _remaining
@@ -31,15 +37,26 @@ object RestTimer {
     /** 本轮休息总时长(秒),null 表示空闲。供横幅进度条用。 */
     val total: StateFlow<Int?> = _total
 
+    /** 倒计时自然走完(非手动跳过)时置 true,由 UI 消费后调用 clearFinished()。 */
+    val finishedNaturally: StateFlow<Boolean> = _finishedNaturally
+
+    fun clearFinished() {
+        _finishedNaturally.value = false
+    }
+
     fun start(seconds: Int) {
         job?.cancel()
         _remaining.value = seconds
         _total.value = seconds
+        _finishedNaturally.value = false
         job = scope.launch {
             while (true) {
                 delay(1000)
                 val next = (_remaining.value ?: break) - 1
-                if (next <= 0) break
+                if (next <= 0) {
+                    _finishedNaturally.value = true
+                    break
+                }
                 _remaining.value = next
             }
             _remaining.value = null
@@ -98,4 +115,34 @@ fun postRestNotification(context: Context, seconds: Int) {
 fun cancelRestNotification(context: Context) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.cancel(NOTIFICATION_ID_REST)
+}
+
+/** 休息结束提示:闹钟音频流响三声 + 双段震动。 */
+fun playRestAlarm(context: Context) {
+    try {
+        val tone = ToneGenerator(AudioManager.STREAM_ALARM, 100)
+        tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350)
+        }, 550)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350)
+        }, 1100)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 1800)
+    } catch (_: RuntimeException) {
+        // 部分设备 ToneGenerator 资源紧张会抛异常,忽略即可,还有震动兜底
+    }
+    val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+        val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+        manager.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+    }
+    if (Build.VERSION.SDK_INT >= 26) {
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 400, 180, 400), -1))
+    } else {
+        @Suppress("DEPRECATION")
+        vibrator.vibrate(longArrayOf(0, 400, 180, 400), -1)
+    }
 }

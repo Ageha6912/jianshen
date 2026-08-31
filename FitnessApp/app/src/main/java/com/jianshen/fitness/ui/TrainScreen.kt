@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,10 +69,19 @@ import com.jianshen.fitness.data.cancelRestNotification
 import com.jianshen.fitness.data.canPostNotifications
 import com.jianshen.fitness.data.fmtKg
 import com.jianshen.fitness.data.fmtKgOrNull
+import com.jianshen.fitness.data.playRestAlarm
 import com.jianshen.fitness.data.postRestNotification
 import com.jianshen.fitness.data.restSecondsPref
 import com.jianshen.fitness.data.saveRestSecondsPref
 import kotlinx.coroutines.launch
+
+/** 一次勾组录入:力量 = 重量+次数;计时 = 时长+可选距离。 */
+data class LoggedSet(
+    val weightKg: Float?,
+    val reps: Int,
+    val durationMin: Int?,
+    val distanceKm: Float?,
+)
 
 @Composable
 fun TrainScreen(onOpenSettings: () -> Unit) {
@@ -148,6 +156,7 @@ private fun SessionEditor(session: TrainingSession) {
     val sets by db.setEntryDao().observeForSession(session.id)
         .collectAsState(initial = emptyList())
     val restRemaining by RestTimer.remaining.collectAsState()
+    val restFinished by RestTimer.finishedNaturally.collectAsState()
     var restSeconds by remember { mutableStateOf(restSecondsPref(context)) }
     var showDurationPicker by remember { mutableStateOf(false) }
     var showAddExercise by remember { mutableStateOf(false) }
@@ -164,6 +173,13 @@ private fun SessionEditor(session: TrainingSession) {
     // 计时结束时撤掉常驻通知。
     LaunchedEffect(restRemaining) {
         if (restRemaining == null) cancelRestNotification(context)
+    }
+    // 倒计时自然走完:响铃 + 震动。
+    LaunchedEffect(restFinished) {
+        if (restFinished) {
+            playRestAlarm(context)
+            RestTimer.clearFinished()
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -195,16 +211,18 @@ private fun SessionEditor(session: TrainingSession) {
                         db.sessionExerciseDao().delete(session.id, ex.exerciseId)
                     }
                 },
-                onSetChecked = { weight, reps ->
+                onSetChecked = { logged ->
                     scope.launch {
                         db.setEntryDao().insert(
                             SetEntry(
                                 sessionId = session.id,
                                 exerciseId = ex.exerciseId,
                                 exerciseNameZh = ex.exerciseNameZh,
-                                weightKg = weight,
-                                reps = reps,
+                                weightKg = logged.weightKg,
+                                reps = logged.reps,
                                 completedAt = System.currentTimeMillis(),
+                                durationMin = logged.durationMin,
+                                distanceKm = logged.distanceKm,
                             )
                         )
                         RestTimer.start(restSeconds)
@@ -361,23 +379,27 @@ private fun RestDurationDialog(
     )
 }
 
-/** 逐组表格卡(LibreFit 式):缩略图 + 表头(重量/次数) + 已完成组行 + 草稿录入行。 */
+/** 逐组表格卡:力量(重量/次数)与计时(时长/距离)双模式,含模板目标与缩略图。 */
 @Composable
 private fun ExerciseSetCard(
     session: TrainingSession,
     exercise: SessionExercise,
     sets: List<SetEntry>,
     onRemove: () -> Unit,
-    onSetChecked: (Float?, Int) -> Unit,
+    onSetChecked: (LoggedSet) -> Unit,
     onSetDeleted: (SetEntry) -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as FitnessApplication
     val db = app.database
     val assetById = remember { app.exercises.associateBy { it.id } }
     val asset = assetById[exercise.exerciseId]
+    val timed = asset?.isTimed == true
+    val hasDistance = asset?.categoryZh == "有氧"
     var lastSummary by remember(exercise.exerciseId) { mutableStateOf<String?>(null) }
     var weightText by remember(exercise.exerciseId) { mutableStateOf("") }
     var repsText by remember(exercise.exerciseId) { mutableStateOf("") }
+    var durationText by remember(exercise.exerciseId) { mutableStateOf("") }
+    var distanceText by remember(exercise.exerciseId) { mutableStateOf("") }
 
     // 上次成绩:最近一次已完成训练中该动作的组数据,汇总成一行。
     LaunchedEffect(exercise.exerciseId, session.finishedAt == null) {
@@ -388,14 +410,26 @@ private fun ExerciseSetCard(
             ?.value
             ?.let { lastSets ->
                 val top = lastSets.maxByOrNull { it.weightKg ?: -1f } ?: lastSets.first()
-                "上次:" + (top.weightKg?.let { "${it.fmtKg()}kg×" } ?: "") + "${top.reps}次×${lastSets.size}组"
+                when {
+                    top.durationMin != null ->
+                        "上次:" + "${top.durationMin}分" +
+                            (top.distanceKm?.let { " · ${it.fmtKg()}km" } ?: "") +
+                            " ×${lastSets.size}组"
+                    else ->
+                        "上次:" + (top.weightKg?.let { "${it.fmtKg()}kg×" } ?: "") + "${top.reps}次×${lastSets.size}组"
+                }
             }
     }
     // 勾选一组后,草稿行自动带入刚完成的数值,方便连续记录同重量。
     LaunchedEffect(sets.size) {
         sets.lastOrNull()?.let {
-            weightText = it.weightKg.fmtKgOrNull()
-            repsText = it.reps.toString()
+            if (it.durationMin != null) {
+                durationText = it.durationMin.toString()
+                distanceText = it.distanceKm?.fmtKgOrNull() ?: ""
+            } else {
+                weightText = it.weightKg.fmtKgOrNull()
+                repsText = it.reps.toString()
+            }
         }
     }
 
@@ -407,21 +441,29 @@ private fun ExerciseSetCard(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    model = asset?.imageUri,
-                    contentDescription = exercise.exerciseNameZh,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentScale = ContentScale.Fit,
-                )
+                ExerciseThumb(asset, exercise.exerciseNameZh, size = 44)
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = exercise.exerciseNameZh,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = exercise.exerciseNameZh,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    // 模板目标(可空 = 普通添加)
+                    exercise.targetSets?.let { target ->
+                        val goal = if (timed) {
+                            "目标 ${target} 组 × ${exercise.targetRepsMin ?: 20}-${exercise.targetRepsMax ?: 30} 分"
+                        } else {
+                            "目标 ${target} 组 × ${exercise.targetRepsMin ?: 8}-${exercise.targetRepsMax ?: 12} 次" +
+                                (exercise.targetWeightKg?.let { " · ${it.fmtKg()}kg" } ?: "")
+                        }
+                        val done = sets.count { it.durationMin != null || it.weightKg != null || it.reps > 0 }
+                        Text(
+                            text = "$goal · 已完成 $done/$target",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
                 Icon(
                     painter = painterResource(R.drawable.ic_close),
                     contentDescription = "移除动作",
@@ -449,13 +491,13 @@ private fun ExerciseSetCard(
                     modifier = Modifier.width(28.dp),
                 )
                 Text(
-                    text = "重量(kg)",
+                    text = if (timed) "时长(分)" else "重量(kg)",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = "次数",
+                    text = if (timed) "距离(km)" else "次数",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -474,16 +516,29 @@ private fun ExerciseSetCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.width(28.dp),
                     )
-                    Text(
-                        text = set.weightKg?.let { "${it.fmtKg()}" } ?: "—",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "${set.reps}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (timed) {
+                        Text(
+                            text = "${set.durationMin ?: 0} 分",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = set.distanceKm?.let { "${it.fmtKg()} km" } ?: "—",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        Text(
+                            text = set.weightKg?.let { "${it.fmtKg()}" } ?: "—",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "${set.reps}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .width(44.dp)
@@ -513,49 +568,135 @@ private fun ExerciseSetCard(
                 modifier = Modifier.padding(top = 4.dp),
             ) {
                 Spacer(modifier = Modifier.width(20.dp))
-                OutlinedTextField(
-                    value = weightText,
-                    onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) },
-                    placeholder = { Text("kg") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = repsText,
-                    onValueChange = { repsText = it.filter(Char::isDigit).take(3) },
-                    placeholder = { Text("次数") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.weight(1f),
-                )
-                Button(
-                    onClick = {
-                        val w = weightText.toFloatOrNull()
-                        val r = repsText.toIntOrNull() ?: return@Button
-                        if (r !in 1..999) return@Button
-                        onSetChecked(w, r)
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(0.dp),
-                    enabled = repsText.toIntOrNull() in 1..999,
-                    modifier = Modifier.size(44.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_check),
-                        contentDescription = "记一组",
-                        modifier = Modifier.size(22.dp),
+                if (timed) {
+                    OutlinedTextField(
+                        value = durationText,
+                        onValueChange = { durationText = it.filter(Char::isDigit).take(3) },
+                        placeholder = { Text("分") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.weight(1f),
                     )
+                    if (hasDistance) {
+                        OutlinedTextField(
+                            value = distanceText,
+                            onValueChange = { distanceText = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) },
+                            placeholder = { Text("km") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    val duration = durationText.toIntOrNull()
+                    val distance = distanceText.toFloatOrNull()
+                    Button(
+                        onClick = {
+                            onSetChecked(
+                                LoggedSet(
+                                    weightKg = null,
+                                    reps = 0,
+                                    durationMin = duration,
+                                    distanceKm = if (hasDistance) distance else null,
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(0.dp),
+                        enabled = duration in 1..600,
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check),
+                            contentDescription = "记一组",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = weightText,
+                        onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) },
+                        placeholder = { Text("kg") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = repsText,
+                        onValueChange = { repsText = it.filter(Char::isDigit).take(3) },
+                        placeholder = { Text("次数") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = {
+                            val w = weightText.toFloatOrNull()
+                            val r = repsText.toIntOrNull() ?: return@Button
+                            if (r !in 1..999) return@Button
+                            onSetChecked(LoggedSet(weightKg = w, reps = r, durationMin = null, distanceKm = null))
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(0.dp),
+                        enabled = repsText.toIntOrNull() in 1..999,
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check),
+                            contentDescription = "记一组",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+/** 动作缩略图:有图加载图片,无图(计时动作)用图标占位。 */
+@Composable
+fun ExerciseThumb(asset: Exercise?, contentDescription: String, size: Int) {
+    if (asset != null && asset.hasImage) {
+        AsyncImage(
+            model = asset.imageUri,
+            contentDescription = contentDescription,
+            modifier = Modifier
+                .size(size.dp)
+                .clip(RoundedCornerShape((size / 4).dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentScale = ContentScale.Fit,
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(size.dp)
+                .clip(RoundedCornerShape((size / 4).dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_fitness_center),
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size((size / 2).dp),
+            )
         }
     }
 }
@@ -563,7 +704,7 @@ private fun ExerciseSetCard(
 /** 添加动作:底部弹层(列表/表单型交互),按部位分组。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExercisePickerSheet(
+fun ExercisePickerSheet(
     onPick: (Exercise) -> Unit,
     alreadyPicked: Set<String>,
     onDismiss: () -> Unit,
@@ -599,15 +740,7 @@ private fun ExercisePickerSheet(
                                 .combinedClickableNoRipple(enabled = !picked) { onPick(exercise) }
                                 .padding(vertical = 6.dp),
                         ) {
-                            AsyncImage(
-                                model = assetById[exercise.id]?.imageUri,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                                contentScale = ContentScale.Fit,
-                            )
+                            ExerciseThumb(assetById[exercise.id], exercise.nameZh, size = 36)
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = exercise.nameZh,

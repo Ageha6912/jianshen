@@ -17,7 +17,11 @@ data class Exercise(
     val image: String,
     val gif: String,
     val attribution: String,
+    // "strength"(默认) | "timed"(有氧/计时:记时长+可选距离)
+    val type: String = "strength",
 ) {
+    val isTimed: Boolean get() = type == "timed"
+    val hasImage: Boolean get() = image.isNotBlank()
     val imageUri: String get() = "file:///android_asset/media/$image"
     val gifUri: String get() = "file:///android_asset/media/$gif"
     val targetZh: String get() = TARGET_ZH[target] ?: target
@@ -81,6 +85,7 @@ object ExerciseRepository {
                     image = o.getString("image"),
                     gif = o.getString("gif"),
                     attribution = o.getString("attribution"),
+                    type = o.optString("type", "strength"),
                 )
             }
             cache = result

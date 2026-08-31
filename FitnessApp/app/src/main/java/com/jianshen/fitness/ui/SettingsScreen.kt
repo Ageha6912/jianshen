@@ -219,7 +219,7 @@ private fun ThemeOptionRow(title: String, mode: String, current: String, onClick
 private fun buildCsv(rows: List<com.jianshen.fitness.data.ExportRow>): String {
     val sb = StringBuilder()
     sb.append('\uFEFF') // UTF-8 BOM,避免 Excel 打开中文乱码
-    sb.append("日期,动作,组序,重量(kg),次数\n")
+    sb.append("日期,动作,组序,重量(kg),次数,时长(分),距离(km)\n")
     val df = DateFmt
     var lastSession = -1L
     var lastExercise = ""
@@ -232,11 +232,14 @@ private fun buildCsv(rows: List<com.jianshen.fitness.data.ExportRow>): String {
         } else {
             setNo += 1
         }
+        val timed = row.durationMin != null
         sb.append(df.format(Date(row.startedAt)))
             .append(',').append(row.exerciseNameZh)
             .append(',').append(setNo)
-            .append(',').append(row.weightKg?.fmtKg() ?: "")
-            .append(',').append(row.reps)
+            .append(',').append(if (timed) "" else row.weightKg?.fmtKg() ?: "")
+            .append(',').append(if (timed) "" else row.reps.toString())
+            .append(',').append(row.durationMin?.toString() ?: "")
+            .append(',').append(row.distanceKm?.fmtKg() ?: "")
             .append('\n')
     }
     return sb.toString()
@@ -277,6 +280,8 @@ private suspend fun buildJsonBackup(db: com.jianshen.fitness.data.FitnessDatabas
                             .put("name", it.exerciseNameZh)
                             .put("weightKg", it.weightKg?.toDouble() ?: JSONObject.NULL)
                             .put("reps", it.reps)
+                            .put("durationMin", it.durationMin ?: JSONObject.NULL)
+                            .put("distanceKm", it.distanceKm?.toDouble() ?: JSONObject.NULL)
                             .put("completedAt", it.completedAt)
                     )
                 }
