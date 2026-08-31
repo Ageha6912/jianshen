@@ -4,10 +4,11 @@
 > Kotlin + Jetpack Compose · Material 3 白金风 · 无账号 · 无广告 · 不联网
 
 <p align="center">
-  <img src="screenshots/train.jpg" width="200" alt="训练页:逐组表格与组间休息倒计时">
-  <img src="screenshots/picker.jpg" width="200" alt="动作选择器">
-  <img src="screenshots/pr.jpg" width="200" alt="个人纪录与 1RM 估算">
-  <img src="screenshots/library_dark.jpg" width="200" alt="动作库(深色)">
+  <img src="screenshots/train.jpg" width="185" alt="训练页:从模板开始,目标组次与完成进度">
+  <img src="screenshots/stats.jpg" width="185" alt="统计:热力图与本周概览">
+  <img src="screenshots/plans.jpg" width="185" alt="计划:推/拉/腿模板">
+  <img src="screenshots/chart.jpg" width="185" alt="每动作走势折线图">
+  <img src="screenshots/picker.jpg" width="185" alt="动作选择器">
 </p>
 
 ## ✨ 特性
