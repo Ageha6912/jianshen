@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,11 +43,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.nativeCanvas
 import com.jianshen.fitness.FitnessApplication
+import com.jianshen.fitness.R
 import com.jianshen.fitness.data.SetEntry
 import com.jianshen.fitness.data.TrainingSession
 import com.jianshen.fitness.data.fmtKg
@@ -350,9 +353,9 @@ fun ExerciseHistoryScreen(exerciseId: String, onBack: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "←",
-                style = MaterialTheme.typography.headlineMedium,
+            Icon(
+                painter = painterResource(R.drawable.ic_arrow_back),
+                contentDescription = "返回",
                 modifier = Modifier
                     .combinedClickableNoRipple(onClick = onBack)
                     .padding(end = 12.dp),
